@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::fmt::Display;
+
+use anyhow::{Context, Result};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -37,5 +39,45 @@ impl Instruction {
         map(separated_pair(tag("addx"), space1, i32), |(_, digit)| {
             Self::Addx(digit)
         })(i)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Pixel {
+    Lit,
+    Dark,
+}
+
+pub struct Screen(Vec<Vec<Pixel>>);
+
+impl Screen {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self(vec![vec![Pixel::Dark; width]; height])
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, pixel: &Pixel) -> Result<()> {
+        *self
+            .0
+            .get_mut(y)
+            .context("get column to set pixel")?
+            .get_mut(x)
+            .context("get pixel to set")? = *pixel;
+        Ok(())
+    }
+}
+
+impl Display for Screen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buffer = String::new();
+        for row in &self.0 {
+            for pixel in row {
+                match pixel {
+                    Pixel::Lit => buffer.push('#'),
+                    Pixel::Dark => buffer.push('.'),
+                }
+            }
+            buffer.push('\n');
+        }
+        write!(f, "{}", buffer)
     }
 }
