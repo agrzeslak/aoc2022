@@ -6,7 +6,7 @@ use nom::{
     combinator::map,
     multi::separated_list0,
     sequence::{delimited, terminated, tuple},
-    IResult,
+    Finish, IResult,
 };
 
 pub struct Pair(pub Entry, pub Entry);
@@ -30,6 +30,13 @@ pub enum Entry {
 }
 
 impl Entry {
+    pub fn divider_packets() -> Vec<Self> {
+        vec![
+            Self::parse("[[2]]").finish().unwrap().1,
+            Self::parse("[[6]]").finish().unwrap().1,
+        ]
+    }
+
     pub fn parse(input: &str) -> IResult<&str, Self> {
         alt((
             map(u32, |n| Self::Value(n)),
@@ -61,20 +68,38 @@ impl Entry {
                     Ordering::Greater => Outcome::IncorrectOrder,
                 }
             }
-            (List(lhs), Value(rhs)) => {
-                List(lhs.to_vec()).check_ordering(&List(vec![Value(*rhs)]))
-            }
-            (Value(lhs), List(rhs)) => {
-                List(vec![Value(*lhs)]).check_ordering(&List(rhs.clone()))
-            }
-            (Value(lhs), Value(rhs)) => {
-                match lhs.cmp(rhs) {
-                    Ordering::Less => Outcome::CorrectOrder,
-                    Ordering::Equal => Outcome::Inconclusive,
-                    Ordering::Greater => Outcome::IncorrectOrder,
-                }
-            }
+            (List(lhs), Value(rhs)) => List(lhs.to_vec()).check_ordering(&List(vec![Value(*rhs)])),
+            (Value(lhs), List(rhs)) => List(vec![Value(*lhs)]).check_ordering(&List(rhs.clone())),
+            (Value(lhs), Value(rhs)) => match lhs.cmp(rhs) {
+                Ordering::Less => Outcome::CorrectOrder,
+                Ordering::Equal => Outcome::Inconclusive,
+                Ordering::Greater => Outcome::IncorrectOrder,
+            },
         }
+    }
+
+    pub fn is_divider_packet(&self) -> bool {
+        let Entry::List(list) = self else {
+            return false;
+        };
+
+        if list.len() != 1 {
+            return false;
+        }
+
+        let Entry::List(list) = &list[0] else {
+            return false;
+        };
+
+        if list.len() != 1 {
+            return false;
+        }
+
+        let Entry::Value(value) = list[0] else {
+            return false;
+        };
+
+        value == 2 || value == 6
     }
 }
 
