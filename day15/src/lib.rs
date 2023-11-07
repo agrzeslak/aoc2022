@@ -1,31 +1,37 @@
-use std::{fmt::Display, ops::Add, cmp};
+use std::{fmt::Display, ops::Add};
 
 use nom::{
     bytes::complete::tag,
-    character::complete::{i32, newline},
+    character::complete::{i64, newline},
     combinator::map,
     multi::separated_list1,
     sequence::{preceded, separated_pair, tuple},
     IResult,
 };
 
+const MAX_COORDINATE: i64 = 4000000;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Point(i32, i32);
+pub struct Point(pub i64, pub i64);
 
 impl Point {
     pub fn parse(input: &str) -> IResult<&str, Self> {
         map(
             separated_pair(
-                preceded(tag("x="), i32),
+                preceded(tag("x="), i64),
                 tag(", "),
-                preceded(tag("y="), i32),
+                preceded(tag("y="), i64),
             ),
             |(x, y)| Self(x, y),
         )(input)
     }
 
-    pub fn manhattan_distance(&self, rhs: &Self) -> i32 {
+    pub fn manhattan_distance(&self, rhs: &Self) -> i64 {
         (self.0 - rhs.0).abs() + (self.1 - rhs.1).abs()
+    }
+
+    pub fn tuning_frequency(&self) -> i64 {
+        self.0 * 4000000 + self.1
     }
 }
 
@@ -74,8 +80,8 @@ impl Area {
         })(input)
     }
 
-    pub fn range_of_sensor_coverage_in_row(&self, y: i32) -> Option<(i32, i32)> {
-        let mut coverage = None;
+    pub fn ranges_covered_in_row(&self, y: i64) -> Vec<(i64, i64)> {
+        let mut coverage = Vec::new();
         for sensor in &self.sensors {
             let sensor_covered_distance =
                 sensor.location.manhattan_distance(&sensor.closest_beacon);
@@ -87,21 +93,25 @@ impl Area {
                 continue;
             }
             let coverage_past_row = sensor_covered_distance - distance_to_row;
-            let (new_low, new_high) = (
+            let covered_range = (
                 sensor.location.0 - coverage_past_row,
                 sensor.location.0 + coverage_past_row,
             );
-            match coverage {
-                Some((low, high)) => {
-                    coverage = Some((cmp::min(low, new_low), cmp::max(high, new_high)))
-                }
-                None => coverage = Some((new_low, new_high)),
-            }
+            coverage.push(covered_range);
         }
         coverage
     }
 
-    pub fn number_of_spots_taken_in_row_section(&self, y: i32, range: (i32, i32)) -> u32 {
+    pub fn point_contains_item(&self, point: &Point) -> bool {
+        for sensor in &self.sensors {
+            if sensor.location == *point || sensor.closest_beacon == *point {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn number_of_spots_taken_in_row_section(&self, y: i64, range: (i64, i64)) -> u64 {
         let mut count = 0;
         'outer: for x in range.0..=range.1 {
             for sensor in &self.sensors {
@@ -112,5 +122,43 @@ impl Area {
             }
         }
         count
+    }
+
+    pub fn is_point_covered(&self, point: &Point) -> bool {
+        let mut is_covered = false;
+        for sensor in &self.sensors {
+            let sensor_covered_distance =
+                sensor.location.manhattan_distance(&sensor.closest_beacon);
+            let distance = sensor.location.manhattan_distance(point);
+            if distance <= sensor_covered_distance {
+                is_covered = true;
+            }
+        }
+        is_covered
+    }
+
+    pub fn locate_distress_beacon(&self) -> Option<Point> {
+        for y in 0..=MAX_COORDINATE {
+            let row_coverage = self.ranges_covered_in_row(y);
+            let mut x = 0;
+            loop {
+                if x > MAX_COORDINATE {
+                    break;
+                }
+                if let Some((_, high)) = row_coverage
+                    .iter()
+                    .find(|(low, high)| (low..=high).contains(&&x))
+                {
+                    x = high + 1;
+                    continue;
+                }
+                let point = Point(x, y);
+                if !self.is_point_covered(&point) {
+                    return Some(point);
+                }
+                x += 1;
+            }
+        }
+        None
     }
 }
